@@ -38,6 +38,58 @@ let
 
   linux68 = pkgs.callPackage linux68_pkg{};
 
+  nvidia-oot = pkgs.stdenv.mkDerivation rec {
+    pname = "oot-modules";
+    version = "6.8.12";
+
+    src = pkgs.fetchurl {
+      url = "https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2";
+      hash = "sha256-6U2+ACWuMT7rYDBhaXr+13uWQdKgbfAiiIV0Vi3R9sU=";
+    };
+
+    nativeBuildInputs = linux68.moduleBuildDependencies ++ [
+      # pkgs.breakpointHook
+    ];
+
+    configurePhase = ''
+      runHook preConfigure
+
+      cd source
+
+      tar xf kernel_oot_modules_src.tbz2
+      tar xf nvidia_kernel_display_driver_source.tbz2
+
+      export CROSS_COMPILE=${pkgs.stdenv.cc}/bin/${pkgs.stdenv.cc.targetPrefix}
+      export KERNEL_HEADERS=${linux68.dev}/lib/modules/${linux68.modDirVersion}/build
+      export IGNORE_MISSING_MODULE_SYMVERS=1
+
+      # Patch nvidia modules source
+      sed -i '49s/SOURCES=$(KERNEL_HEADERS)/SOURCES=$(KERNEL_HEADERS)\/source/g' Makefile
+      sed -i '/cp -LR $(KERNEL_HEADERS)\/\* $(NVIDIA_HEADERS)/s/$/ \|\| true;/' Makefile
+      #Sources are copied from store. They are read only
+      sed -i '/cp -LR $(KERNEL_HEADERS)\/\* $(NVIDIA_HEADERS)/a \\tchmod -R u+w out/nvidia-linux-header/' Makefile
+      sed -i '113s/SYSSRC=$(NVIDIA_HEADERS)/SYSSRC=$(NVIDIA_HEADERS)\/source/g' Makefile
+      # TODO: Remove warning:
+      #    warning: call to ‘__write_overflow_field’
+      sed -i '/subdir-ccflags-y += -Werror/d' nvidia-oot/Makefile
+
+      runHook postConfigure
+    '';
+    buildPhase = ''
+      runHook preBuild
+
+      make modules
+
+      runHook postBuild
+    '';
+
+    # Avoid an error in modpost: "__stack_chk_guard" [.../nvidia.ko] undefined
+    NIX_CFLAGS_COMPILE = "-fno-stack-protector";
+
+    installTargets = [ "modules_install" ];
+    enableParallelBuilding = true;
+  };
+
   compile_nvidia_modules = pkgs.writeShellScriptBin "prepare_and_compile_modules" ''
 
     # Download Jetson BSP and unpack
@@ -78,6 +130,7 @@ pkgs.mkShell rec {
     buildPackages.openssl
     linux68
     compile_nvidia_modules
+    nvidia-oot
   ];
   shellHook = ''
     export LINUX68=${linux68}
