@@ -115,7 +115,36 @@ let
 
     make modules
   '';
-  
+
+  nvidia-oot-raw = derivation {
+    name = "nvidia-oot-raw";
+    builder = "${hostPkgs.bash}/bin/bash";
+    linux68dev =  "${linux68.dev}";
+    aarch64LinuxGnu = "${pkgs.stdenv.cc}";
+    system = builtins.currentSystem;
+    args = [ ./nvidia-oot-builder.sh ];
+    src = pkgs.fetchurl {
+      url = "https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2";
+      hash = "sha256-6U2+ACWuMT7rYDBhaXr+13uWQdKgbfAiiIV0Vi3R9sU=";
+    };
+
+    buildInputs = [
+      hostPkgs.bzip2
+      hostPkgs.which
+      hostPkgs.gnutar
+      hostPkgs.gnumake
+      hostPkgs.coreutils
+      hostPkgs.gnused
+      hostPkgs.binutils.bintools
+      hostPkgs.findutils
+      hostPkgs.bash
+      hostPkgs.gawk
+      hostPkgs.gcc
+      hostPkgs.gnugrep
+      hostPkgs.xz
+    ];
+  };
+
 in
 pkgs.mkShell rec {
 
@@ -130,7 +159,8 @@ pkgs.mkShell rec {
     buildPackages.openssl
     linux68
     compile_nvidia_modules
-    nvidia-oot
+    # TODO Fix: nvidia-oot
+    nvidia-oot-raw
   ];
   shellHook = ''
     export LINUX68=${linux68}
